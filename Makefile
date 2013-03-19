@@ -3,11 +3,19 @@
 #
 # Intel Compilers are loaded by default; for other compilers please check the module list
 #
+ifeq ($(shell hostname),f4hy)
+CC = g++
+MPCC = mpicxx
+OPENMP = -fopenmp
+CFLAGS = -O3
+LIBS = -lm
+else
 CC = icpc
 MPCC = mpicxx
 OPENMP = -openmp
 CFLAGS = -O3
 LIBS =
+endif
 
 
 TARGETS = serial pthreads openmp mpi autograder
