@@ -1,8 +1,12 @@
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
 #include "common.h"
+
+#define TIMERS 1
+
 
 //
 //  benchmarking program
@@ -38,6 +42,11 @@ int main(int argc, char **argv)
     //  simulate a number of time steps
     //
     double simulation_time = read_timer();
+#if TIMERS==1
+    double force_time = 0.0;
+    double move_time = 0.0;
+    double running_time;
+#endif
 
     for(int step = 0; step < NSTEPS; step++) {
         navg = 0;
@@ -46,19 +55,29 @@ int main(int argc, char **argv)
         //
         //  compute forces
         //
+#if TIMERS==1
+        running_time = read_timer();
+#endif
+
         for(int i = 0; i < n; i++) {
             particles[i].ax = particles[i].ay = 0;
             for(int j = 0; j < n; j++) {
                 apply_force(particles[i], particles[j], &dmin, &davg, &navg);
             }
         }
-
+#if TIMERS==1
+        force_time += read_timer() - running_time;
+        running_time = read_timer();
+#endif
         //
         //  move particles
         //
         for(int i = 0; i < n; i++) {
             move(particles[i]);
         }
+#if TIMERS==1
+        move_time += read_timer() - running_time;
+#endif
 
         if(find_option(argc, argv, "-no") == -1) {
             //
@@ -104,6 +123,10 @@ int main(int argc, char **argv)
         }
     }
     printf("\n");
+#if TIMERS==1
+    printf(" force time = %g seconds", force_time);
+    printf(" move time = %g seconds\n", move_time);
+#endif
 
     //
     // Printing summary data
