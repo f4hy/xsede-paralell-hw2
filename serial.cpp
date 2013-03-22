@@ -59,58 +59,84 @@ int main(int argc, char **argv)
 #if TIMERS==1
         running_time = read_timer();
 #endif
-        std::vector<particle_t> TOP_LEFT;
-        std::vector<particle_t> TOP_RIGHT;
+        std::vector<particle_t*> TOP_LEFT;
+        std::vector<particle_t*> TOP_RIGHT;
 
-        std::vector<particle_t> BOT_LEFT;
-        std::vector<particle_t> BOT_RIGHT;
+        std::vector<particle_t*> BOT_LEFT;
+        std::vector<particle_t*> BOT_RIGHT;
 
         double size =  sqrt(0.0005 * n);
-        
+
         for(int i = 0; i < n; i++) {
             double x = particles[i].x;
             double y = particles[i].y;
             if(x<size/2){        // left
                 if(y<size/2) {
-                    BOT_LEFT.push_back(particles[i]);
+                    BOT_LEFT.push_back(particles+i);
                 }
                 else{
-                    TOP_LEFT.push_back(particles[i]);
+                    TOP_LEFT.push_back(particles+i);
                 }
             }
             else{
                 if(y<size/2) {
-                    BOT_RIGHT.push_back(particles[i]);
+                    BOT_RIGHT.push_back(particles+i);
                 }
                 else{
-                    TOP_RIGHT.push_back(particles[i]);
+                    TOP_RIGHT.push_back(particles+i);
                 }
             }
         }
-        
-        for(std::vector<particle_t>::iterator i = TOP_LEFT.begin(); i<TOP_LEFT.end(); i++){
-            i->ax = i->ay = 0;
-            for(std::vector<particle_t>::iterator j= TOP_LEFT.begin(); j<TOP_LEFT.end(); j++){
-                apply_force(*i,*j, &dmin, &davg, &navg);
-            }            
+
+
+        for(std::vector<particle_t*>::iterator i = TOP_LEFT.begin(); i<TOP_LEFT.end(); i++){
+            (*i)->ax = (*i)->ay = 0;
+            for(std::vector<particle_t*>::iterator j= TOP_LEFT.begin(); j<TOP_LEFT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= TOP_RIGHT.begin(); j<TOP_RIGHT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= BOT_LEFT.begin(); j<BOT_LEFT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
         }
-        for(std::vector<particle_t>::iterator i= TOP_RIGHT.begin(); i<TOP_RIGHT.end(); i++){
-            i->ax = i->ay = 0;
-            for(std::vector<particle_t>::iterator j= TOP_RIGHT.begin(); j<TOP_RIGHT.end(); j++){
-                apply_force(*i,*j, &dmin, &davg, &navg);
-            }            
+        for(std::vector<particle_t*>::iterator i= TOP_RIGHT.begin(); i<TOP_RIGHT.end(); i++){
+            (*i)->ax = (*i)->ay = 0;
+            for(std::vector<particle_t*>::iterator j= TOP_RIGHT.begin(); j<TOP_RIGHT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= TOP_LEFT.begin(); j<TOP_LEFT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= BOT_RIGHT.begin(); j<BOT_RIGHT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
         }
-        for(std::vector<particle_t>::iterator i= BOT_LEFT.begin(); i<BOT_LEFT.end(); i++){
-            i->ax = i->ay = 0;
-            for(std::vector<particle_t>::iterator j= BOT_LEFT.begin(); j<BOT_LEFT.end(); j++){  
-                apply_force(*i,*j, &dmin, &davg, &navg);
-            }            
+        for(std::vector<particle_t*>::iterator i= BOT_LEFT.begin(); i<BOT_LEFT.end(); i++){
+            (*i)->ax = (*i)->ay = 0;
+            for(std::vector<particle_t*>::iterator j= BOT_LEFT.begin(); j<BOT_LEFT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= BOT_RIGHT.begin(); j<BOT_RIGHT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= TOP_LEFT.begin(); j<TOP_LEFT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+
         }
-        for(std::vector<particle_t>::iterator i= BOT_RIGHT.begin(); i<BOT_RIGHT.end(); i++){ 
-            i->ax = i->ay = 0;
-            for(std::vector<particle_t>::iterator j= BOT_RIGHT.begin(); j<BOT_RIGHT.end(); j++){
-                apply_force(*i,*j, &dmin, &davg, &navg);
-            }            
+        for(std::vector<particle_t*>::iterator i= BOT_RIGHT.begin(); i<BOT_RIGHT.end(); i++){
+            (*i)->ax = (*i)->ay = 0;
+            for(std::vector<particle_t*>::iterator j= BOT_RIGHT.begin(); j<BOT_RIGHT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= BOT_LEFT.begin(); j<BOT_LEFT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
+            for(std::vector<particle_t*>::iterator j= TOP_RIGHT.begin(); j<TOP_RIGHT.end(); j++){
+                apply_force(**i,**j, &dmin, &davg, &navg);
+            }
         }
 
         // for(int i = 0; i < n; i++) {
