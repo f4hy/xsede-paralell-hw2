@@ -11,3 +11,13 @@
 *.lai
 *.la
 *.a
+
+# exes
+/autograder
+/mpi
+/openmp
+/pthreads
+/serial
+
+# outputs
+/*_sum.txt
