@@ -1,4 +1,3 @@
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -71,83 +70,65 @@ int main(int argc, char **argv)
         std::vector<particle_t*> BOT_LEFT_BUFF;
         std::vector<particle_t*> BOT_RIGHT_BUFF;
 
+        std::vector< std::vector<particle_t*> > blocks;
+        std::vector< std::vector<particle_t*> > blocks_buffered;
 
+        
+        
         double size =  sqrt(0.0005 * n);
+        double buffer = 0.01;
 
-        for(int i = 0; i < n; i++) {
-            double x = particles[i].x;
-            double y = particles[i].y;
-            if(x<=size/2 && y<=size/2){
-                BOT_LEFT.push_back(particles+i);
-            }
-            if(x<=size/2 && y>size/2){
-                TOP_LEFT.push_back(particles+i);
+        int subdiv = 6;
+        for(int sx = 0; sx<subdiv; sx++){
+            for(int sy = 0; sy<subdiv; sy++){
+                
+                double left = sx*(size/subdiv);
+                double right = (sx+1)*(size/subdiv);
+                double bot = sy*(size/subdiv);
+                double top = (sy+1)*(size/subdiv);
+                std::vector<particle_t*> block;
+                std::vector<particle_t*> block_buffered;
+                // printf("left %f, right %f, bot %f, top %f \n ", left, right, bot, top);
 
-            }
-            if(x>size/2 && y<=size/2){
-                BOT_RIGHT.push_back(particles+i);
-            }
-            if(x>size/2 && y>size/2){
-                TOP_RIGHT.push_back(particles+i);
-            }
-                                // add slightly overlapped buffer regions
-            double buffer = 0.01;
-            if(x<=(size/2)+buffer && y<=(size/2)+buffer){
-                BOT_LEFT_BUFF.push_back(particles+i);
-            }
-            if(x<=(size/2)+buffer && y>(size/2)-buffer){
-                TOP_LEFT_BUFF.push_back(particles+i);
+                
+                for(int i = 0; i < n; i++) {
+                    double x = particles[i].x;
+                    double y = particles[i].y;
 
-            }
-            if(x>(size/2)-buffer && y<=(size/2)+buffer){
-                BOT_RIGHT_BUFF.push_back(particles+i);
-            }
-            if(x>(size/2)-buffer && y>(size/2)-buffer){
-                TOP_RIGHT_BUFF.push_back(particles+i);
-            }
+                    if(left<x && x<=right && bot<y && y<=top){
+                        block.push_back(particles+i);
+                    }
+                    if(left-buffer<x && x<=right+buffer && bot-buffer<y && y<=top+buffer){
+                        block_buffered.push_back(particles+i);
+                    }
 
-        }
-
-
-        for(std::vector<particle_t*>::iterator i = TOP_LEFT.begin(); i<TOP_LEFT.end(); i++){
-            (*i)->ax = (*i)->ay = 0;
-            for(std::vector<particle_t*>::iterator j= TOP_LEFT_BUFF.begin(); j<TOP_LEFT_BUFF.end(); j++){
-                apply_force(**i,**j, &dmin, &davg, &navg);
+                }
+                blocks.push_back(block);
+                blocks_buffered.push_back(block_buffered);
+                
             }
         }
-        for(std::vector<particle_t*>::iterator i= TOP_RIGHT.begin(); i<TOP_RIGHT.end(); i++){
-            (*i)->ax = (*i)->ay = 0;
-            for(std::vector<particle_t*>::iterator j= TOP_RIGHT_BUFF.begin(); j<TOP_RIGHT_BUFF.end(); j++){
-                apply_force(**i,**j, &dmin, &davg, &navg);
+        // printf("blocks size: %d\n", blocks.size());
+        std::vector< std::vector<particle_t*> >::iterator b_b = blocks_buffered.begin();
+        for(std::vector< std::vector<particle_t*> >::iterator block = blocks.begin(); block<blocks.end(); block++){
+            // printf("block size: %d\n", block->size());
+            // printf("b_b size: %d\n", b_b->size());
+            
+            for(std::vector<particle_t*>::iterator i = block->begin(); i<block->end(); i++){
+                (*i)->ax = (*i)->ay = 0;
+                for(std::vector<particle_t*>::iterator j = b_b->begin(); j<b_b->end(); j++){
+                    apply_force(**i,**j, &dmin, &davg, &navg);
+                }
             }
+            b_b++;
         }
-        for(std::vector<particle_t*>::iterator i= BOT_LEFT.begin(); i<BOT_LEFT.end(); i++){
-            (*i)->ax = (*i)->ay = 0;
-            for(std::vector<particle_t*>::iterator j= BOT_LEFT_BUFF.begin(); j<BOT_LEFT_BUFF.end(); j++){
-                apply_force(**i,**j, &dmin, &davg, &navg);
-            }
-
-        }
-        for(std::vector<particle_t*>::iterator i= BOT_RIGHT.begin(); i<BOT_RIGHT.end(); i++){
-            (*i)->ax = (*i)->ay = 0;
-            for(std::vector<particle_t*>::iterator j= BOT_RIGHT.begin(); j<BOT_RIGHT.end(); j++){
-                apply_force(**i,**j, &dmin, &davg, &navg);
-            }
-        }
-
-        // for(int i = 0; i < n; i++) {
-        //     particles[i].ax = particles[i].ay = 0;
-        //     for(int j = 0; j < n; j++) {
-        //         apply_force(particles[i], particles[j], &dmin, &davg, &navg);
-        //     }
-        // }
 #if TIMERS==1
         force_time += read_timer() - running_time;
         running_time = read_timer();
 #endif
-        //
-        //  move particles
-        //
+//
+//  move particles
+//
         for(int i = 0; i < n; i++) {
             move(particles[i]);
         }
@@ -204,16 +185,16 @@ int main(int argc, char **argv)
     printf(" move time = %g seconds\n", move_time);
 #endif
 
-    //
-    // Printing summary data
-    //
+//
+// Printing summary data
+//
     if(fsum) {
         fprintf(fsum, "%d %g\n", n, simulation_time);
     }
 
-    //
-    // Clearing space
-    //
+//
+// Clearing space
+//
     if(fsum) {
         fclose(fsum);
     }
