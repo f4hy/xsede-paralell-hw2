@@ -7,7 +7,7 @@ ifeq ($(shell hostname),f4hy)
 CC = g++
 MPCC = mpicxx
 OPENMP = -fopenmp
-CFLAGS = -O3
+CFLAGS = -O3 -Wall -W -Wextra -Wunused
 LIBS = -lm
 else
 CC = icpc
