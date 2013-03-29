@@ -11,9 +11,9 @@
 static inline uint32_t log2(const uint32_t x) {
   uint32_t y;
   asm ( "\tbsr %1, %0\n"
-	: "=r"(y)
-	: "r" (x)
-	);
+        : "=r"(y)
+        : "r" (x)
+        );
   return y;
 }
 //
@@ -68,21 +68,22 @@ int main(int argc, char **argv)
 #endif
         std::vector< std::vector<particle_t*> > blocks;
         std::vector< std::vector<particle_t*> > blocks_buffered;
-        
+
         double size =  sqrt(0.0005 * n);
         double buffer = 0.01;
 
+
         size_t subdiv = max(4,log2(n));
-        for(int sx = 0; sx<subdiv; sx++){
-            for(int sy = 0; sy<subdiv; sy++){
+        for(size_t sx = 0; sx<subdiv; sx++){
+            for(size_t sy = 0; sy<subdiv; sy++){
                 double left = sx*(size/subdiv);
                 double right = (sx+1)*(size/subdiv);
                 double bot = sy*(size/subdiv);
                 double top = (sy+1)*(size/subdiv);
                 std::vector<particle_t*> block;
                 std::vector<particle_t*> block_buffered;
-                
-                for(int i = 0; i < n; i++) {
+
+                for(size_t i = 0; i < n; i++) {
                     double x = particles[i].x;
                     double y = particles[i].y;
 
@@ -114,7 +115,7 @@ int main(int argc, char **argv)
 //
 //  move particles
 //
-        for(int i = 0; i < n; i++) {
+        for(size_t i = 0; i < n; i++) {
             move(particles[i]);
         }
 #if TIMERS==1
