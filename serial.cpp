@@ -7,7 +7,15 @@
 
 #define TIMERS 0
 
-
+#include <stdint.h>
+static inline uint32_t log2(const uint32_t x) {
+  uint32_t y;
+  asm ( "\tbsr %1, %0\n"
+	: "=r"(y)
+	: "r" (x)
+	);
+  return y;
+}
 //
 //  benchmarking program
 //
@@ -26,7 +34,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    int n = read_int(argc, argv, "-n", 1000);
+    const uint32_t n = read_int(argc, argv, "-n", 1000);
 
     char *savename = read_string(argc, argv, "-o", NULL);
     char *sumname = read_string(argc, argv, "-s", NULL);
@@ -64,7 +72,7 @@ int main(int argc, char **argv)
         double size =  sqrt(0.0005 * n);
         double buffer = 0.01;
 
-        int subdiv = 6;
+        size_t subdiv = max(4,log2(n));
         for(int sx = 0; sx<subdiv; sx++){
             for(int sy = 0; sy<subdiv; sy++){
                 double left = sx*(size/subdiv);
