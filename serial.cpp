@@ -56,6 +56,19 @@ int main(int argc, char **argv)
     double running_time;
 #endif
 
+    double size =  sqrt(0.0005 * n);
+    double interaction_length = 0.01;
+
+
+    int blocksize = (int) ceil(size/interaction_length);
+    double block_width = size/blocksize;
+
+    particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
+    for(int b=0; b<blocksize*blocksize; b++){
+        blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
+    }
+
+    
     for(int step = 0; step < NSTEPS; step++) {
         navg = 0;
         davg = 0.0;
@@ -66,48 +79,52 @@ int main(int argc, char **argv)
 #if TIMERS==1
         running_time = read_timer();
 #endif
-        std::vector< std::vector<particle_t*> > blocks;
-        std::vector< std::vector<particle_t*> > blocks_buffered;
 
-        double size =  sqrt(0.0005 * n);
-        double buffer = 0.01;
+        int number_in_block[blocksize*blocksize];
 
+        for(int b=0; b<blocksize*blocksize; b++){
+            number_in_block[b] = 0; // starts with no particles in any box;
+        }
 
-        size_t subdiv = max(4,log2(n));
-        for(size_t sx = 0; sx<subdiv; sx++){
-            for(size_t sy = 0; sy<subdiv; sy++){
-                double left = sx*(size/subdiv);
-                double right = (sx+1)*(size/subdiv);
-                double bot = sy*(size/subdiv);
-                double top = (sy+1)*(size/subdiv);
-                std::vector<particle_t*> block;
-                std::vector<particle_t*> block_buffered;
+        for(size_t p = 0; p < n; p++) {
+            double x = particles[p].x;
+            double y = particles[p].y;
 
-                for(size_t i = 0; i < n; i++) {
-                    double x = particles[i].x;
-                    double y = particles[i].y;
+            int x_index = (int)floor(x/block_width);
+            int y_index = (int)floor(y/block_width);
+            int particle_index = number_in_block[x_index + y_index*blocksize]++;
+            blocks[x_index + y_index*blocksize][particle_index] = particles+p;
+        }
 
-                    if(left<x && x<=right && bot<y && y<=top){
-                        block.push_back(particles+i);
-                    }
-                    if(left-buffer<x && x<=right+buffer && bot-buffer<y && y<=top+buffer){
-                        block_buffered.push_back(particles+i);
+        for(int i=0; i<blocksize; i++){
+            for(int j=0; j<blocksize; j++){
+                for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
+                    blocks[i + j*blocksize][p]->ax = blocks[i + j*blocksize][p]->ay = 0;
+                    //interact with blocks and neighbors
+                    for(int xoffset=-1; xoffset<2; xoffset++){
+                        int xblockindex = i+xoffset;
+                        // dont go out of bounds
+                        if(xblockindex<0 || xblockindex >= blocksize ){
+                            continue;
+                        }
+                        for(int yoffset=-1; yoffset<2; yoffset++){
+                            int yblockindex = j+yoffset;
+                            // dont go out of bounds
+                            if(yblockindex<0 || yblockindex >= blocksize ){
+                                continue;
+                            }
+                            for(int num=0; num<number_in_block[xblockindex + yblockindex*blocksize]; num++ ){
+                                // apply the force
+                                apply_force(*(blocks[i + j*blocksize][p]), // this particle
+                                            *(blocks[xblockindex + yblockindex*blocksize][num]), // its neighbor
+                                            &dmin, &davg, &navg);
+                                }
+                        }
                     }
                 }
-                blocks.push_back(block);
-                blocks_buffered.push_back(block_buffered);
             }
         }
-        std::vector< std::vector<particle_t*> >::iterator b_b = blocks_buffered.begin();
-        for(std::vector< std::vector<particle_t*> >::iterator block = blocks.begin(); block<blocks.end(); block++){
-            for(std::vector<particle_t*>::iterator i = block->begin(); i<block->end(); i++){
-                (*i)->ax = (*i)->ay = 0;
-                for(std::vector<particle_t*>::iterator j = b_b->begin(); j<b_b->end(); j++){
-                    apply_force(**i,**j, &dmin, &davg, &navg);
-                }
-            }
-            b_b++;
-        }
+
 #if TIMERS==1
         force_time += read_timer() - running_time;
         running_time = read_timer();
