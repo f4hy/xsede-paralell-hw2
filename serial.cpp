@@ -56,6 +56,21 @@ int main(int argc, char **argv)
     double running_time;
 #endif
 
+    double size =  sqrt(0.0005 * n);
+    double interaction_length = 0.01;
+
+
+    int blocksize = (int) ceil(size/interaction_length);
+    double block_width = size/blocksize;
+
+    printf("blocksize :%d\n", blocksize);
+
+    particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
+    for(int b=0; b<blocksize*blocksize; b++){
+        blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
+    }
+
+    
     for(int step = 0; step < NSTEPS; step++) {
         navg = 0;
         davg = 0.0;
@@ -66,48 +81,208 @@ int main(int argc, char **argv)
 #if TIMERS==1
         running_time = read_timer();
 #endif
-        std::vector< std::vector<particle_t*> > blocks;
-        std::vector< std::vector<particle_t*> > blocks_buffered;
+        // std::vector< std::vector<particle_t*> > blocks;
+        // std::vector< std::vector<particle_t*> > blocks_buffered;
 
-        double size =  sqrt(0.0005 * n);
-        double buffer = 0.01;
+        
+        // particle_t* blocks = (particle_t*) malloc(blocksize*blocksize*n * sizeof(particle_t));
+        // particle_t* blocks = new particle_t[blocksize*blocksize][n];
+            
+        // particle_t* blocks[blocksize*blocksize][n];
+        int number_in_block[blocksize*blocksize];
 
+        // printf("initalize\n");
+        for(int b=0; b<blocksize*blocksize; b++){
+            number_in_block[b] = 0; // starts with no particles in any box;
+        }
+        // printf("setup\n");
 
-        size_t subdiv = max(4,log2(n));
-        for(size_t sx = 0; sx<subdiv; sx++){
-            for(size_t sy = 0; sy<subdiv; sy++){
-                double left = sx*(size/subdiv);
-                double right = (sx+1)*(size/subdiv);
-                double bot = sy*(size/subdiv);
-                double top = (sy+1)*(size/subdiv);
-                std::vector<particle_t*> block;
-                std::vector<particle_t*> block_buffered;
+        for(int p = 0; p < n; p++) {
+            double x = particles[p].x;
+            double y = particles[p].y;
 
-                for(size_t i = 0; i < n; i++) {
-                    double x = particles[i].x;
-                    double y = particles[i].y;
+            int x_index = (int)floor(x/block_width);
+            int y_index = (int)floor(y/block_width);
+            // assert (x_index >=0 && x_index <blocksize );
+            // assert (y_index >=0 && y_index <blocksize );
+            int particle_index = number_in_block[x_index + y_index*blocksize]++;
+            // assert (particle_index < n);            
+            blocks[x_index + y_index*blocksize][particle_index] = particles+p;
+        }
+        // printf("applying force\n");
+        // for(int p=0; p<n; p++){
+        //     printf("%d    : x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",p,particles[p].x,particles[p].y,
+        //            particles[p].vx,particles[p].vy,
+        //            particles[p].ax,particles[p].ay);
+        // }
+        // int count = 0;
+        // for(int i=0; i<blocksize; i++){
+        //     for(int j=0; j<blocksize; j++){
+        //         count += number_in_block[i + j*blocksize];
+        //         printf("blocksize %d thisblock[%d][%d] %d \n",blocksize,i,j,number_in_block[i + j*blocksize]);
+        //     }
+        // }
+        // assert(count == n);
+        // if(count != n){
+        //     printf("ERROR");
+        //     exit(1);
+        // }
+        bool mustquit = false;
+        for(int i=0; i<blocksize; i++){
+            for(int j=0; j<blocksize; j++){
+                for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
+                    blocks[i + j*blocksize][p]->ax = blocks[i + j*blocksize][p]->ay = 0;
+                    // printf("%d %d %d %d\n",step, i,j,p);
+                    // printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //        (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //        (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    // (blocks[i + j*blocksize][p])->vx = 0;
+                    // particle_t interacting_p = blocks[i + j*blocksize][p];
 
-                    if(left<x && x<=right && bot<y && y<=top){
-                        block.push_back(particles+i);
+                    
+                    // double preax = (blocks[i + j*blocksize][p])->ax;
+                    // double preay = (blocks[i + j*blocksize][p])->ay;
+                    
+                    // for(int foo=0; foo<n; foo++){
+                    //     apply_force(*(blocks[i + j*blocksize][p]), particles[foo], &dmin, &davg, &navg);
+
+                    // }
+                    // double finalax = (blocks[i + j*blocksize][p])->ax;
+                    // double finalay = (blocks[i + j*blocksize][p])->ay;
+                    // blocks[i + j*blocksize][p]->ax = blocks[i + j*blocksize][p]->ay = 0;
+                    //interact with this block
+                    for(int xoffset=-2; xoffset<3; xoffset++){
+                        int xblockindex = i+xoffset;
+                        if(xblockindex<0 || xblockindex >= blocksize ){
+                            continue;
+                        }
+                        for(int yoffset=-2; yoffset<3; yoffset++){
+                            int yblockindex = j+yoffset;
+                            if(yblockindex<0 || yblockindex >= blocksize ){
+                                continue;
+                            }
+                            // printf("%d %d  ",xblockindex, yblockindex);
+                            for(int num=0; num<number_in_block[xblockindex + yblockindex*blocksize]; num++ ){
+                                apply_force(*(blocks[i + j*blocksize][p]), *(blocks[xblockindex + yblockindex*blocksize][num]), &dmin, &davg, &navg);
+
+                                }
+                        }
                     }
-                    if(left-buffer<x && x<=right+buffer && bot-buffer<y && y<=top+buffer){
-                        block_buffered.push_back(particles+i);
-                    }
+                    // printf(" \n");
+                    double postax = (blocks[i + j*blocksize][p])->ax;
+                    double postay = (blocks[i + j*blocksize][p])->ay;
+
+                    
+                    // if(postax != finalax){
+                    //     printf("%d %d %d %d: %f\n",step,i,j,p,postax);
+                    //     printf("%d         : %f\n",step,finalax);
+                    //     printf("%d %d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",step,i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //            (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //            (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    //     mustquit = 1;
+                    // }
+                    // assert(postax == finalax);
+                    // assert(postax == finalax);
+                    // for(int n=0; n<number_in_block[i + j*blocksize]; n++ ){
+
+                    //     apply_force(*(blocks[i + j*blocksize][p]), *(blocks[i + j*blocksize][n]), &dmin, &davg, &navg);
+                    // }
+                    // printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //        (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //        (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    // // interact with i-1 neighbors
+                    // if(i!=0){
+                    //     for(int n=0; n<number_in_block[i-1 + j*blocksize]; n++ ){
+                    //         apply_force(*(blocks[i + j*blocksize][p]), *(blocks[i-1 + j*blocksize][n]), &dmin, &davg, &navg);
+                    //     }
+                    // }
+                    // printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //        (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //        (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    // // interact with j-1 neighbors
+                    // if(j!=0){
+                    //     for(int n=0; n<number_in_block[i + (j-1)*blocksize]; n++ ){
+                    //         apply_force(*(blocks[i + j*blocksize][p]), *(blocks[i + (j-1)*blocksize][n]), &dmin, &davg, &navg);
+                    //     }
+                    // }
+                    // printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //        (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //        (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    // // interact with i+1 neighbors
+                    // if(i!=blocksize-1){
+                    //     for(int n=0; n<number_in_block[(i+1) + j*blocksize]; n++ ){
+                    //         apply_force(*(blocks[i + j*blocksize][p]), *(blocks[(i+1) + j*blocksize][n]), &dmin, &davg, &navg);
+                    //     }
+                    // }
+                    // printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //        (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //        (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    // // interact with j+1 neighbors
+                    // if(j!=blocksize-1){
+                    //     for(int n=0; n<number_in_block[i + (j+1)*blocksize]; n++ ){
+                    //         apply_force(*(blocks[i + j*blocksize][p]), *(blocks[i + (j+1)*blocksize][n]), &dmin, &davg, &navg);
+                    //     }
+                    // }
+                    // printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                    //        (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                    //        (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+
                 }
-                blocks.push_back(block);
-                blocks_buffered.push_back(block_buffered);
             }
         }
-        std::vector< std::vector<particle_t*> >::iterator b_b = blocks_buffered.begin();
-        for(std::vector< std::vector<particle_t*> >::iterator block = blocks.begin(); block<blocks.end(); block++){
-            for(std::vector<particle_t*>::iterator i = block->begin(); i<block->end(); i++){
-                (*i)->ax = (*i)->ay = 0;
-                for(std::vector<particle_t*>::iterator j = b_b->begin(); j<b_b->end(); j++){
-                    apply_force(**i,**j, &dmin, &davg, &navg);
+        if(mustquit){
+            for(int i=0; i<blocksize; i++){
+                for(int j=0; j<blocksize; j++){
+                    for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
+                        printf("%d,%d,%d: x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",i,j,p,(blocks[i + j*blocksize][p])->x,(blocks[i + j*blocksize][p])->y,
+                               (blocks[i + j*blocksize][p])->vx,(blocks[i + j*blocksize][p])->vy,
+                               (blocks[i + j*blocksize][p])->ax,(blocks[i + j*blocksize][p])->ay);
+                    }
                 }
             }
-            b_b++;
+            for(int p=0; p<n; p++){
+                printf("%d    : x %f, y %f, vx %f, vy %f, ax %f, ay %f \n",p,particles[p].x,particles[p].y,
+                       particles[p].vx,particles[p].vy,
+                       particles[p].ax,particles[p].ay);
+            }
+        exit(1);
         }
+
+        // int subdiv = max(4,log2(n));
+        // for(int sx = 0; sx<subdiv; sx++){
+        //     for(int sy = 0; sy<subdiv; sy++){
+        //         double left = sx*(size/subdiv);
+        //         double right = (sx+1)*(size/subdiv);
+        //         double bot = sy*(size/subdiv);
+        //         double top = (sy+1)*(size/subdiv);
+        //         std::vector<particle_t*> block;
+        //         std::vector<particle_t*> block_buffered;
+
+        //         for(int i = 0; i < n; i++) {
+        //             double x = particles[i].x;
+        //             double y = particles[i].y;
+
+        //             if(left<x && x<=right && bot<y && y<=top){
+        //                 block.push_back(particles+i);
+        //             }
+        //             if(left-buffer<x && x<=right+buffer && bot-buffer<y && y<=top+buffer){
+        //                 block_buffered.push_back(particles+i);
+        //             }
+        //         }
+        //         blocks.push_back(block);
+        //         blocks_buffered.push_back(block_buffered);
+        //     }
+        // }
+        // std::vector< std::vector<particle_t*> >::iterator b_b = blocks_buffered.begin();
+        // for(std::vector< std::vector<particle_t*> >::iterator block = blocks.begin(); block<blocks.end(); block++){
+        //     for(std::vector<particle_t*>::iterator i = block->begin(); i<block->end(); i++){
+        //         (*i)->ax = (*i)->ay = 0;
+        //         for(std::vector<particle_t*>::iterator j = b_b->begin(); j<b_b->end(); j++){
+        //             apply_force(**i,**j, &dmin, &davg, &navg);
+        //         }
+        //     }
+        //     b_b++;
+        // }
 #if TIMERS==1
         force_time += read_timer() - running_time;
         running_time = read_timer();
@@ -115,7 +290,7 @@ int main(int argc, char **argv)
 //
 //  move particles
 //
-        for(size_t i = 0; i < n; i++) {
+        for(int i = 0; i < n; i++) {
             move(particles[i]);
         }
 #if TIMERS==1
