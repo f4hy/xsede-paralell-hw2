@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #define TIMERS 0
+#define MAXPARTILCESPERBOX 100
 
 //
 //  benchmarking program
@@ -57,7 +58,7 @@ int main(int argc, char **argv)
 
     particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
     for(int b=0; b<blocksize*blocksize; b++){
-        blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
+        blocks[b] = (particle_t**)malloc(MAXPARTILCESPERBOX*sizeof(particle_t*));
     }
 
     
@@ -91,7 +92,7 @@ int main(int argc, char **argv)
             blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
         }
 
-#pragma omp parallel for shared(blocks) firstprivate(number_in_block) reduction (+:navg) reduction(+:davg)
+#pragma omp parallel for shared(blocks) shared(number_in_block) reduction (+:navg) reduction(+:davg)
         for(int i=0; i<blocksize; i++){
             for(int j=0; j<blocksize; j++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
