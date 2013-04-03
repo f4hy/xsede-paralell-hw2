@@ -58,31 +58,36 @@ int main(int argc, char **argv)
     for(int b=0; b<blocksize*blocksize; b++){
         blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
     }
+    int number_in_block[blocksize*blocksize];
 
     
     MPI_Datatype PARTICLE;
     MPI_Type_contiguous(6, MPI_DOUBLE, &PARTICLE);
     MPI_Type_commit(&PARTICLE);
 
+    MPI_Datatype BLOCK;
+    MPI_Type_contiguous(6*n, MPI_DOUBLE, &BLOCK);
+    MPI_Type_commit(&BLOCK);
+
     //
     //  set up the data partitioning across processors
     //
-    // int particle_per_proc = (n + n_proc - 1) / n_proc;
-    // int *partition_offsets = (int*) malloc((n_proc + 1) * sizeof(int));
-    // for(int i = 0; i < n_proc + 1; i++) {
-    //     partition_offsets[i] = min(i * particle_per_proc, n);
-    // }
+    int blocks_per_proc = (blocksize + n_proc - 1) / n_proc;
+    int *partition_offsets = (int*) malloc((n_proc + 1) * sizeof(int));
+    for(int i = 0; i < n_proc + 1; i++) {
+        partition_offsets[i] = min(i * blocks_per_proc, blocksize);
+    }
 
-    // int *partition_sizes = (int*) malloc(n_proc * sizeof(int));
-    // for(int i = 0; i < n_proc; i++) {
-    //     partition_sizes[i] = partition_offsets[i + 1] - partition_offsets[i];
-    // }
+    int *partition_sizes = (int*) malloc(n_proc * sizeof(int));
+    for(int i = 0; i < n_proc; i++) {
+        partition_sizes[i] = partition_offsets[i + 1] - partition_offsets[i];
+    }
 
-    //
-    //  allocate storage for local partition
-    //
-    // int nlocal = partition_sizes[rank];
-    // particle_t *local = (particle_t*) malloc(nlocal * sizeof(particle_t));
+    
+     allocate storage for local partition
+    
+    int nlocal = partition_sizes[rank];
+    particle_t *local = (particle_t*) malloc(nlocal*n * sizeof(particle_t));
 
     //
     //  initialize and distribute the particles (that's fine to leave it unoptimized)
@@ -90,7 +95,19 @@ int main(int argc, char **argv)
     set_size(n);
     if(rank == 0) {
         init_particles(n, particles);
+        for(size_t p = 0; p < n; p++) {
+            double x = particles[p].x;
+            double y = particles[p].y;
+
+            int x_index = (int)floor(x/block_width);
+            int y_index = (int)floor(y/block_width);
+            int particle_index = number_in_block[x_index + y_index*blocksize]++;
+            blocks[x_index + y_index*blocksize][particle_index] = particles+p;
+        }
+
     }
+    
+    
     printf("inital scatter\n");
     MPI_Scatter(particles, n, PARTICLE, particles, n, PARTICLE, 0, MPI_COMM_WORLD);
     printf("inital scattered\n");
@@ -107,7 +124,6 @@ int main(int argc, char **argv)
         //  collect all global data locally (not good idea to do)
         //
         // MPI_Allgatherv(local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD);
-        int number_in_block[blocksize*blocksize];
 
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
