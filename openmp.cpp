@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define TIMERS 0
-#define MAXPARTILCESPERBOX 100
+#define MAXPARTILCESPERBOX 50
 
 //
 //  benchmarking program
