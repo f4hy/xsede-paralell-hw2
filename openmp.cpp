@@ -73,7 +73,6 @@ int main(int argc, char **argv)
 #endif
 
         int number_in_block[blocksize*blocksize];
-
 #pragma omp parallel for shared(number_in_block)
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
@@ -86,8 +85,10 @@ int main(int argc, char **argv)
 
             int x_index = (int)floor(x/block_width);
             int y_index = (int)floor(y/block_width);
-            int particle_index = number_in_block[x_index + y_index*blocksize]++;
-            blocks[x_index + y_index*blocksize][particle_index] = particles+p;
+            #pragma omp atomic
+            number_in_block[x_index + y_index*blocksize]++;
+
+            blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
         }
 
 #pragma omp parallel for shared(blocks) firstprivate(number_in_block)
