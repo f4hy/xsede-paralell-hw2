@@ -4,26 +4,30 @@
 #include <math.h>
 #include "common.h"
 #include "omp.h"
+#include <stdint.h>
+
+#define TIMERS 0
 
 //
 //  benchmarking program
 //
 int main(int argc, char **argv)
 {
-    int navg, nabsavg = 0, numthreads;
-    double dmin, absmin = 1.0, davg, absavg = 0.0;
+    int navg, nabsavg = 0;
+    double davg, dmin, absmin = 1.0, absavg = 0.0;
 
     if(find_option(argc, argv, "-h") >= 0) {
         printf("Options:\n");
         printf("-h to see this help\n");
-        printf("-n <int> to set number of particles\n");
+        printf("-n <int> to set the number of particles\n");
         printf("-o <filename> to specify the output file name\n");
         printf("-s <filename> to specify a summary file name\n");
         printf("-no turns off all correctness checks and particle output\n");
         return 0;
     }
 
-    int n = read_int(argc, argv, "-n", 1000);
+    const uint32_t n = read_int(argc, argv, "-n", 1000);
+
     char *savename = read_string(argc, argv, "-o", NULL);
     char *sumname = read_string(argc, argv, "-s", NULL);
 
@@ -38,62 +42,122 @@ int main(int argc, char **argv)
     //  simulate a number of time steps
     //
     double simulation_time = read_timer();
+#if TIMERS==1
+    double force_time = 0.0;
+    double move_time = 0.0;
+    double running_time;
+#endif
 
-    #pragma omp parallel private(dmin)
-    {
-        numthreads = omp_get_num_threads();
-        for(int step = 0; step < 1000; step++) {
-            navg = 0;
-            davg = 0.0;
-            dmin = 1.0;
-            //
-            //  compute all forces
-            //
-            #pragma omp for reduction (+:navg) reduction(+:davg)
-            for(int i = 0; i < n; i++) {
-                particles[i].ax = particles[i].ay = 0;
-                for(int j = 0; j < n; j++) {
-                    apply_force(particles[i], particles[j], &dmin, &davg, &navg);
+    double size =  sqrt(0.0005 * n);
+    double interaction_length = 0.01;
+
+
+    int blocksize = (int) ceil(size/interaction_length);
+    double block_width = size/blocksize;
+
+    particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
+    for(int b=0; b<blocksize*blocksize; b++){
+        blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
+    }
+
+    
+    for(int step = 0; step < NSTEPS; step++) {
+        navg = 0;
+        davg = 0.0;
+        dmin = 1.0;
+        //
+        //  compute forces
+        //
+#if TIMERS==1
+        running_time = read_timer();
+#endif
+
+        int number_in_block[blocksize*blocksize];
+
+#pragma omp parallel for shared(number_in_block)
+        for(int b=0; b<blocksize*blocksize; b++){
+            number_in_block[b] = 0; // starts with no particles in any box;
+        }
+
+#pragma omp parallel for shared(blocks, number_in_block)
+        for(size_t p = 0; p < n; p++) {
+            double x = particles[p].x;
+            double y = particles[p].y;
+
+            int x_index = (int)floor(x/block_width);
+            int y_index = (int)floor(y/block_width);
+            int particle_index = number_in_block[x_index + y_index*blocksize]++;
+            blocks[x_index + y_index*blocksize][particle_index] = particles+p;
+        }
+
+#pragma omp parallel for shared(blocks) firstprivate(number_in_block)
+        for(int i=0; i<blocksize; i++){
+            for(int j=0; j<blocksize; j++){
+                for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
+                    blocks[i + j*blocksize][p]->ax = blocks[i + j*blocksize][p]->ay = 0;
+                    //interact with blocks and neighbors
+                    for(int xoffset=-1; xoffset<2; xoffset++){
+                        int xblockindex = i+xoffset;
+                        // dont go out of bounds
+                        if(xblockindex<0 || xblockindex >= blocksize ){
+                            continue;
+                        }
+                        for(int yoffset=-1; yoffset<2; yoffset++){
+                            int yblockindex = j+yoffset;
+                            // dont go out of bounds
+                            if(yblockindex<0 || yblockindex >= blocksize ){
+                                continue;
+                            }
+                            for(int num=0; num<number_in_block[xblockindex + yblockindex*blocksize]; num++ ){
+                                // apply the force
+                                apply_force(*(blocks[i + j*blocksize][p]), // this particle
+                                            *(blocks[xblockindex + yblockindex*blocksize][num]), // its neighbor
+                                            &dmin, &davg, &navg);
+                                }
+                        }
+                    }
                 }
             }
+        }
 
+#if TIMERS==1
+        force_time += read_timer() - running_time;
+        running_time = read_timer();
+#endif
+//
+//  move particles
+//
+#pragma omp parallel for
+        for(size_t i = 0; i < n; i++) {
+            move(particles[i]);
+        }
+#if TIMERS==1
+        move_time += read_timer() - running_time;
+#endif
 
+        if(find_option(argc, argv, "-no") == -1) {
             //
-            //  move particles
+            // Computing statistical data
             //
-            #pragma omp for
-            for(int i = 0; i < n; i++) {
-                move(particles[i]);
+            if(navg) {
+                absavg +=  davg / navg;
+                nabsavg++;
+            }
+            if(dmin < absmin) {
+                absmin = dmin;
             }
 
-            if(find_option(argc, argv, "-no") == -1) {
-                //
-                //  compute statistical data
-                //
-                #pragma omp master
-                if(navg) {
-                    absavg += davg / navg;
-                    nabsavg++;
-                }
-
-                #pragma omp critical
-                if(dmin < absmin) {
-                    absmin = dmin;
-                }
-
-                //
-                //  save if necessary
-                //
-                #pragma omp master
-                if(fsave && (step % SAVEFREQ) == 0) {
-                    save(fsave, n, particles);
-                }
+            //
+            //  save if necessary
+            //
+            if(fsave && (step % SAVEFREQ) == 0) {
+                save(fsave, n, particles);
             }
         }
     }
     simulation_time = read_timer() - simulation_time;
 
-    printf("n = %d,threads = %d, simulation time = %g seconds", n, numthreads, simulation_time);
+    printf("n = %d, simulation time = %g seconds", n, simulation_time);
 
     if(find_option(argc, argv, "-no") == -1) {
         if(nabsavg) {
@@ -115,21 +179,24 @@ int main(int argc, char **argv)
         }
     }
     printf("\n");
+#if TIMERS==1
+    printf(" force time = %g seconds", force_time);
+    printf(" move time = %g seconds\n", move_time);
+#endif
 
-    //
-    // Printing summary data
-    //
+//
+// Printing summary data
+//
     if(fsum) {
-        fprintf(fsum, "%d %d %g\n", n, numthreads, simulation_time);
+        fprintf(fsum, "%d %g\n", n, simulation_time);
     }
 
-    //
-    // Clearing space
-    //
+//
+// Clearing space
+//
     if(fsum) {
         fclose(fsum);
     }
-
     free(particles);
     if(fsave) {
         fclose(fsave);
