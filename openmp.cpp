@@ -91,7 +91,7 @@ int main(int argc, char **argv)
             blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
         }
 
-#pragma omp parallel for shared(blocks) firstprivate(number_in_block)
+#pragma omp parallel for shared(blocks) firstprivate(number_in_block) reduction (+:navg) reduction(+:davg)
         for(int i=0; i<blocksize; i++){
             for(int j=0; j<blocksize; j++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
