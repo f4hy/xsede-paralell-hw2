@@ -95,8 +95,8 @@ int main(int argc, char **argv)
         }
         }
 #pragma omp parallel for  shared(blocks, number_in_block) reduction (+:navg) reduction(+:davg)
-        for(int i=0; i<blocksize; i++){
-            for(int j=0; j<blocksize; j++){
+        for(int j=0; j<blocksize; j++){
+            for(int i=0; i<blocksize; i++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
                     blocks[i + j*blocksize][p]->ax = blocks[i + j*blocksize][p]->ay = 0;
                     //interact with blocks and neighbors
