@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     double interaction_length = 0.01;
 
 
-    int blocksize = min((int) ceil(size/interaction_length), 256);
+    int blocksize = (int) ceil(size/interaction_length);
     double block_width = size/blocksize;
 
     particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
@@ -76,12 +76,12 @@ int main(int argc, char **argv)
         int number_in_block[blocksize*blocksize];
 #pragma omp parallel shared(number_in_block)
         {
-#pragma omp for
+#pragma omp for schedule(dynamic, n/omp_get_num_threads())
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
         }
 
-#pragma omp for
+#pragma omp for schedule(dynamic, n/omp_get_num_threads())
         for(size_t p = 0; p < n; p++) {
             double x = particles[p].x;
             double y = particles[p].y;
@@ -94,7 +94,7 @@ int main(int argc, char **argv)
             blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
         }
         }
-#pragma omp parallel for shared(blocks, number_in_block) reduction (+:navg) reduction(+:davg)
+#pragma omp parallel for schedule(dynamic, blocksize/omp_get_num_threads()) shared(blocks, number_in_block) reduction (+:navg) reduction(+:davg)
         for(int i=0; i<blocksize; i++){
             for(int j=0; j<blocksize; j++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
 //
 //  move particles
 //
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, n/omp_get_num_threads())
         for(size_t i = 0; i < n; i++) {
             move(particles[i]);
         }
