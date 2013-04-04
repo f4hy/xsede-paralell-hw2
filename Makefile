@@ -6,17 +6,16 @@
 ifeq ($(shell hostname),f4hy)
 CC = g++
 MPCC = mpicxx
-OPENMP = -fopenmp
+OPENMP = -fopenmp 
 CFLAGS = -O3 -Wall -W -Wextra -Wunused
 LIBS = -lm
 else
 CC = icpc
 MPCC = mpicxx
-OPENMP = -openmp
+OPENMP = -openmp -xHost
 CFLAGS = -O3
 LIBS =
 endif
-
 
 TARGETS = serial openmp mpi autograder
 

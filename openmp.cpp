@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #define TIMERS 0
+#define MAXPARTILCESPERBOX 8
 
 //
 //  benchmarking program
@@ -57,10 +58,10 @@ int main(int argc, char **argv)
 
     particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
     for(int b=0; b<blocksize*blocksize; b++){
-        blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
+        blocks[b] = (particle_t**)malloc(MAXPARTILCESPERBOX*sizeof(particle_t*));
     }
 
-    
+
     for(int step = 0; step < NSTEPS; step++) {
         navg = 0;
         davg = 0.0;
@@ -73,25 +74,27 @@ int main(int argc, char **argv)
 #endif
 
         int number_in_block[blocksize*blocksize];
-#pragma omp parallel for shared(number_in_block)
+#pragma omp parallel shared(number_in_block)
+        {
+#pragma omp for
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
         }
 
-#pragma omp parallel for shared(blocks, number_in_block)
+#pragma omp for
         for(size_t p = 0; p < n; p++) {
             double x = particles[p].x;
             double y = particles[p].y;
 
             int x_index = (int)floor(x/block_width);
             int y_index = (int)floor(y/block_width);
-            #pragma omp atomic
+#pragma omp atomic
             number_in_block[x_index + y_index*blocksize]++;
 
             blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
         }
-
-#pragma omp parallel for shared(blocks) firstprivate(number_in_block) reduction (+:navg) reduction(+:davg)
+        }
+#pragma omp parallel for  shared(blocks, number_in_block) reduction (+:navg) reduction(+:davg)
         for(int i=0; i<blocksize; i++){
             for(int j=0; j<blocksize; j++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
@@ -114,7 +117,7 @@ int main(int argc, char **argv)
                                 apply_force(*(blocks[i + j*blocksize][p]), // this particle
                                             *(blocks[xblockindex + yblockindex*blocksize][num]), // its neighbor
                                             &dmin, &davg, &navg);
-                                }
+                            }
                         }
                     }
                 }
@@ -157,8 +160,11 @@ int main(int argc, char **argv)
         }
     }
     simulation_time = read_timer() - simulation_time;
-
-    printf("n = %d, simulation time = %g seconds", n, simulation_time);
+#pragma omp parallel
+    {
+#pragma omp master
+        printf( "n = %d,threads = %d, simulation time = %g seconds", n,omp_get_num_threads(), simulation_time);
+    }
 
     if(find_option(argc, argv, "-no") == -1) {
         if(nabsavg) {
@@ -188,8 +194,12 @@ int main(int argc, char **argv)
 //
 // Printing summary data
 //
-    if(fsum) {
-        fprintf(fsum, "%d %g\n", n, simulation_time);
+#pragma omp parallel
+    {
+        if(fsum) {
+#pragma omp master
+            fprintf(fsum, "%d %d %g\n", n, omp_get_num_threads(), simulation_time);
+        }
     }
 
 //

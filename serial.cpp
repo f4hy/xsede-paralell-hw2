@@ -6,6 +6,7 @@
 #include <vector>
 
 #define TIMERS 0
+// #define MAXPARTILCESPERBOX 5000
 
 #include <stdint.h>
 static inline uint32_t log2(const uint32_t x) {
@@ -94,6 +95,7 @@ int main(int argc, char **argv)
             int y_index = (int)floor(y/block_width);
             int particle_index = number_in_block[x_index + y_index*blocksize]++;
             blocks[x_index + y_index*blocksize][particle_index] = particles+p;
+            assert(particle_index < n);
         }
 
         for(int i=0; i<blocksize; i++){
