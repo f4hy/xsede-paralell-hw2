@@ -15,6 +15,7 @@
 int main(int argc, char **argv)
 {
     int navg, nabsavg = 0;
+    int numthreads;
     double davg, dmin, absmin = 1.0, absavg = 0.0;
 
     if(find_option(argc, argv, "-h") >= 0) {
@@ -38,6 +39,7 @@ int main(int argc, char **argv)
     particle_t *particles = (particle_t*) malloc(n * sizeof(particle_t));
     set_size(n);
     init_particles(n, particles);
+    numthreads = omp_get_num_threads();
 
     //
     //  simulate a number of time steps
@@ -159,7 +161,7 @@ int main(int argc, char **argv)
     }
     simulation_time = read_timer() - simulation_time;
 
-    printf("n = %d, simulation time = %g seconds", n, simulation_time);
+    printf( "n = %d,threads = %d, simulation time = %g seconds", n,numthreads, simulation_time);
 
     if(find_option(argc, argv, "-no") == -1) {
         if(nabsavg) {
