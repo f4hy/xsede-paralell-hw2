@@ -15,7 +15,6 @@
 int main(int argc, char **argv)
 {
     int navg, nabsavg = 0;
-    int numthreads;
     double davg, dmin, absmin = 1.0, absavg = 0.0;
 
     if(find_option(argc, argv, "-h") >= 0) {
@@ -39,7 +38,6 @@ int main(int argc, char **argv)
     particle_t *particles = (particle_t*) malloc(n * sizeof(particle_t));
     set_size(n);
     init_particles(n, particles);
-    numthreads = omp_get_num_threads();
 
     //
     //  simulate a number of time steps
@@ -88,7 +86,7 @@ int main(int argc, char **argv)
 
             int x_index = (int)floor(x/block_width);
             int y_index = (int)floor(y/block_width);
-            #pragma omp atomic
+#pragma omp atomic
             number_in_block[x_index + y_index*blocksize]++;
 
             blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
@@ -117,7 +115,7 @@ int main(int argc, char **argv)
                                 apply_force(*(blocks[i + j*blocksize][p]), // this particle
                                             *(blocks[xblockindex + yblockindex*blocksize][num]), // its neighbor
                                             &dmin, &davg, &navg);
-                                }
+                            }
                         }
                     }
                 }
@@ -160,8 +158,11 @@ int main(int argc, char **argv)
         }
     }
     simulation_time = read_timer() - simulation_time;
-
-    printf( "n = %d,threads = %d, simulation time = %g seconds", n,numthreads, simulation_time);
+#pragma omp parallel
+    {
+#pragma omp master 
+        printf( "n = %d,threads = %d, simulation time = %g seconds", n,omp_get_num_threads(), simulation_time);
+    }
 
     if(find_option(argc, argv, "-no") == -1) {
         if(nabsavg) {
@@ -191,8 +192,12 @@ int main(int argc, char **argv)
 //
 // Printing summary data
 //
-    if(fsum) {
-        fprintf(fsum, "%d %g\n", n, simulation_time);
+#pragma omp parallel
+    {
+        if(fsum) {
+#pragma omp master 
+            fprintf(fsum, "%d %d %g\n", n, omp_get_num_threads(), simulation_time);
+        }
     }
 
 //
