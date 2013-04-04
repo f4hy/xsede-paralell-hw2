@@ -1,9 +1,19 @@
+#ifdef RELEASE
+#define DBOUT( x )
+#else
+#define DBOUT( x )  if(rank == 0) x
+#endif
+
+
 #include <mpi.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
 #include "common.h"
+#define MAXPARTILCESPERBOX 8
+
+
 
 //
 //  benchmarking program
@@ -52,50 +62,71 @@ int main(int argc, char **argv)
     double interaction_length = 0.01;
 
     int blocksize = (int) ceil(size/interaction_length);
+    DBOUT(printf("blocksize = %d \n" ,blocksize));
+
     double block_width = size/blocksize;
 
     particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
     for(int b=0; b<blocksize*blocksize; b++){
-        blocks[b] = (particle_t**)malloc(n*sizeof(particle_t*));
+        blocks[b] = (particle_t**)malloc(MAXPARTILCESPERBOX*sizeof(particle_t*));
     }
     int number_in_block[blocksize*blocksize];
+    for(int b=0; b<blocksize*blocksize; b++){
+        number_in_block[b] = 0; // starts with no particles in any box;
+    }
 
     
+    DBOUT(printf("setup particle mpi types\n"));
     MPI_Datatype PARTICLE;
     MPI_Type_contiguous(6, MPI_DOUBLE, &PARTICLE);
     MPI_Type_commit(&PARTICLE);
 
+    DBOUT(printf("setup block mpi types\n"));
     MPI_Datatype BLOCK;
-    MPI_Type_contiguous(6*n, MPI_DOUBLE, &BLOCK);
+    MPI_Type_contiguous(6*MAXPARTILCESPERBOX, MPI_DOUBLE, &BLOCK);
     MPI_Type_commit(&BLOCK);
 
     //
     //  set up the data partitioning across processors
     //
+    DBOUT(printf("setup partition offsets \n"));
     int blocks_per_proc = (blocksize + n_proc - 1) / n_proc;
     int *partition_offsets = (int*) malloc((n_proc + 1) * sizeof(int));
     for(int i = 0; i < n_proc + 1; i++) {
+        DBOUT(printf("%d \n" ,i));
         partition_offsets[i] = min(i * blocks_per_proc, blocksize);
+        DBOUT(printf("partition_ofsets[%d] = %d \n" ,i, partition_offsets[i]));
     }
 
+    DBOUT(printf("setup partition sizes \n"));
     int *partition_sizes = (int*) malloc(n_proc * sizeof(int));
     for(int i = 0; i < n_proc; i++) {
+        DBOUT(printf("%d \n" ,i));
         partition_sizes[i] = partition_offsets[i + 1] - partition_offsets[i];
+        DBOUT(printf("partition_sizes[%d] = %d \n" ,i, partition_sizes[i]));
     }
 
     
-     allocate storage for local partition
+    //allocate storage for local partition
     
-    int nlocal = partition_sizes[rank];
-    particle_t *local = (particle_t*) malloc(nlocal*n * sizeof(particle_t));
+    DBOUT(printf("setup local blocks\n"));
+    // int num_local_blocks = partition_sizes[rank];
 
+    // particle_t *local_blocks = (particle_t*) malloc(num_local_blocks*MAXPARTILCESPERBOX * sizeof(particle_t));
+    
+    
     //
     //  initialize and distribute the particles (that's fine to leave it unoptimized)
     //
+
     set_size(n);
     if(rank == 0) {
+        DBOUT(printf("init particles\n"));
         init_particles(n, particles);
-        for(size_t p = 0; p < n; p++) {
+
+
+        DBOUT(printf("set blocks the first time\n"));
+        for(int p = 0; p < n; p++) {
             double x = particles[p].x;
             double y = particles[p].y;
 
@@ -106,15 +137,43 @@ int main(int argc, char **argv)
         }
 
     }
+    particle_t *contig_particles = (particle_t*) malloc(n * sizeof(particle_t));
+
+    DBOUT(printf("set contig blocks\n"));
+    if(rank == 0) {
+        int contig_index = 0;
+        for (int r=0; r<n_proc; r++){
+            for(int i=0; i<blocksize; i++){
+            
+                for(int j=0; j<blocksize; j++){
+                    for(int p=0; p<blocksize*blocksize*MAXPARTILCESPERBOX; p++ ){
+                        // for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
+                        contig_particles[contig_index] = *(blocks[i + j*blocksize][p]);
+                        contig_index++;
+                    }
+                }
+            }
+        }
+        assert(contig_index == n);
+    }
     
-    
-    printf("inital scatter\n");
-    MPI_Scatter(particles, n, PARTICLE, particles, n, PARTICLE, 0, MPI_COMM_WORLD);
-    printf("inital scattered\n");
+    printf("scatterv");
+    // MPI_Scatterv(contig_block_particles, partition_sizes, partition_offsets, BLOCK,
+    //              local_blocks, num_local_blocks, PARTICLE, 0, MPI_COMM_WORLD);
+    // MPI_Scatterv(contig_block_particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD);
+
+    printf("scatteredv");
+    // exit(1);
+    // printf("inital scatter\n");
+    // MPI_Scatter(particles, n, PARTICLE, particles, n, PARTICLE, 0, MPI_COMM_WORLD);
+    // printf("inital scattered\n");
 
     //
     //  simulate a number of time steps
     //
+    MPI_Finalize();
+    return 1;
+    exit(1);
     double simulation_time = read_timer();
     for(int step = 0; step < NSTEPS; step++) {
         navg = 0;
