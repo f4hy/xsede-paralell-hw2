@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define TIMERS 0
-#define MAXPARTILCESPERBOX 50
+#define MAXPARTILCESPERBOX 8
 
 //
 //  benchmarking program
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     double interaction_length = 0.01;
 
 
-    int blocksize = (int) ceil(size/interaction_length);
+    int blocksize = min((int) ceil(size/interaction_length), 256);
     double block_width = size/blocksize;
 
     particle_t*** blocks = (particle_t***) malloc(blocksize*blocksize * sizeof(particle_t**));
@@ -74,12 +74,14 @@ int main(int argc, char **argv)
 #endif
 
         int number_in_block[blocksize*blocksize];
-#pragma omp parallel for shared(number_in_block)
+#pragma omp parallel shared(number_in_block)
+        {
+#pragma omp for
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
         }
 
-#pragma omp parallel for shared(blocks, number_in_block)
+#pragma omp for
         for(size_t p = 0; p < n; p++) {
             double x = particles[p].x;
             double y = particles[p].y;
@@ -91,8 +93,8 @@ int main(int argc, char **argv)
 
             blocks[x_index + y_index*blocksize][number_in_block[x_index + y_index*blocksize]-1] = particles+p;
         }
-
-#pragma omp parallel for shared(blocks) shared(number_in_block) reduction (+:navg) reduction(+:davg)
+        }
+#pragma omp parallel for shared(blocks, number_in_block) reduction (+:navg) reduction(+:davg)
         for(int i=0; i<blocksize; i++){
             for(int j=0; j<blocksize; j++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
