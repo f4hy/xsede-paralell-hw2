@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <iostream>
 #include "common.h"
 #define MAXPARTILCESPERBOX 8
 
@@ -53,8 +54,9 @@ int main(int argc, char **argv)
     //
     //  allocate generic resources
     //
-    FILE *fsave = savename && rank == 0 ? fopen(savename, "w") : NULL;
+    // FILE *fsave = savename && rank == 0 ? fopen(savename, "w") : NULL;
     FILE *fsum = sumname && rank == 0 ? fopen(sumname, "a") : NULL;
+    FILE *fsave = savename ? fopen(savename, "a") : NULL;
 
 
     particle_t *particles = (particle_t*) malloc(n * sizeof(particle_t));
@@ -109,7 +111,7 @@ int main(int argc, char **argv)
     
     //allocate storage for local partition
     
-    DBOUT(printf("setup local blocks\n"));
+    // DBOUT(printf("setup local blocks\n"));
     // int num_local_blocks = partition_sizes[rank];
 
     // particle_t *local_blocks = (particle_t*) malloc(num_local_blocks*MAXPARTILCESPERBOX * sizeof(particle_t));
@@ -139,30 +141,51 @@ int main(int argc, char **argv)
     }
     particle_t *contig_particles = (particle_t*) malloc(n * sizeof(particle_t));
 
+    int particles_on_proc[n_proc];
+    int particles_on_proc_offsets[n_proc+1];
+    particles_on_proc_offsets[0] = 0;
     DBOUT(printf("set contig blocks\n"));
     if(rank == 0) {
         int contig_index = 0;
         for (int r=0; r<n_proc; r++){
-            for(int i=0; i<blocksize; i++){
-            
+            particles_on_proc[r] = 0;
+            for(int i=partition_offsets[r]; i<partition_offsets[r+1]; i++){
                 for(int j=0; j<blocksize; j++){
-                    for(int p=0; p<blocksize*blocksize*MAXPARTILCESPERBOX; p++ ){
+                    for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
                         // for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
                         contig_particles[contig_index] = *(blocks[i + j*blocksize][p]);
                         contig_index++;
+                        particles_on_proc[r]++;
                     }
                 }
+                
             }
+            particles_on_proc_offsets[r+1] = particles_on_proc_offsets[r]+particles_on_proc[r];
         }
         assert(contig_index == n);
+        int total_particles = 0;
+        for (int r=0; r<n_proc; r++){
+            total_particles += particles_on_proc[r];
+            DBOUT(printf("partciles on proc[%d] = %d\n",r,particles_on_proc[r]));
+        }
+        assert(total_particles == n);
     }
+    MPI_Bcast(particles_on_proc, n_proc, MPI_INT, 0, MPI_COMM_WORLD);
+
+    int myparticle_count = particles_on_proc[rank];
+    particle_t *myparticles = (particle_t*) malloc((myparticle_count)* sizeof(particle_t) );
     
-    printf("scatterv");
+    printf("scatterv\n");
     // MPI_Scatterv(contig_block_particles, partition_sizes, partition_offsets, BLOCK,
     //              local_blocks, num_local_blocks, PARTICLE, 0, MPI_COMM_WORLD);
-    // MPI_Scatterv(contig_block_particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(contig_particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, myparticles, myparticle_count, PARTICLE, 0, MPI_COMM_WORLD);
 
-    printf("scatteredv");
+    printf("scatteredv\n");
+
+    // std::cout << rank << " " << myparticle_count << std::endl;
+    // for(int p=0; p<myparticle_count; p++){
+    //     std::cout << rank << " "<<myparticles[p].x << " " << myparticles[p].y<< std::endl;
+    // }
     // exit(1);
     // printf("inital scatter\n");
     // MPI_Scatter(particles, n, PARTICLE, particles, n, PARTICLE, 0, MPI_COMM_WORLD);
@@ -171,9 +194,6 @@ int main(int argc, char **argv)
     //
     //  simulate a number of time steps
     //
-    MPI_Finalize();
-    return 1;
-    exit(1);
     double simulation_time = read_timer();
     for(int step = 0; step < NSTEPS; step++) {
         navg = 0;
@@ -187,28 +207,33 @@ int main(int argc, char **argv)
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
         }
-        if(rank == 0) {
-            for(int p = 0; p < n; p++) {
-                double x = particles[p].x;
-                double y = particles[p].y;
+        for(int p = 0; p < myparticle_count; p++) {
+            double x = myparticles[p].x;
+            double y = myparticles[p].y;
                 
-                int x_index = (int)floor(x/block_width);
-                int y_index = (int)floor(y/block_width);
-                int particle_index = number_in_block[x_index + y_index*blocksize]++;
-                blocks[x_index + y_index*blocksize][particle_index] = particles+p;
-            }
+            int x_index = (int)floor(x/block_width);
+            int y_index = (int)floor(y/block_width);
+            int particle_index = number_in_block[x_index + y_index*blocksize]++;
+            blocks[x_index + y_index*blocksize][particle_index] = myparticles+p;
         }
-        printf("block scatter\n");
-        MPI_Scatter(blocks, blocksize*blocksize*n, PARTICLE, blocks, blocksize*blocksize*n, PARTICLE, 0, MPI_COMM_WORLD);
-        printf("block scattered\n");
-        MPI_Scatter(number_in_block, blocksize*blocksize, MPI_INT, number_in_block, blocksize*blocksize, PARTICLE, 0, MPI_COMM_WORLD);
-        printf("num in block scattered\n");
+        
+
         //
         //  save current step if necessary (slightly different semantics than in other codes)
         //
         if(find_option(argc, argv, "-no") == -1)
-            if(fsave && (step % SAVEFREQ) == 0) {
-                save(fsave, n, particles);
+            // if(fsave && (step % SAVEFREQ) == 0) {
+            if( (step % SAVEFREQ) == 0) {
+                // MPI_Scatterv(contig_particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, myparticles, myparticle_count, PARTICLE, 0, MPI_COMM_WORLD);
+                
+                // MPI_Gatherv(myparticles, myparticle_count, PARTICLE, particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, 0, MPI_COMM_WORLD);
+                // save(fsave, n, particles);
+                for(int r=0; r<n_proc; r++){
+                    if(rank ==r)
+                        save(fsave, myparticle_count, myparticles);
+                    MPI_Barrier(MPI_COMM_WORLD );
+                }
+                
             }
 
         //
@@ -272,9 +297,9 @@ int main(int argc, char **argv)
 
         //
         //  move particles
-        //
-        for(int i = 0; i < n; i++) {
-            move(particles[i]);
+        //x
+        for(int i = 0; i < myparticle_count; i++) {
+            move(myparticles[i]);
         }
         // for(int i = 0; i < nlocal; i++) {
         //     move(local[i]);
