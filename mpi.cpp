@@ -111,6 +111,15 @@ int main(int argc, char **argv)
         particles_to_recv[r] = (particle_t*) malloc(n * sizeof(particle_t));
     }
 
+    particle_t **particles_to_ghost_send = (particle_t**) malloc(n_proc * sizeof(particle_t*));
+    for(int r = 0; r < n_proc; r++){
+        particles_to_ghost_send[r] = (particle_t*) malloc(n * sizeof(particle_t));
+    }
+
+    particle_t **particles_to_ghost_recv = (particle_t**) malloc(n_proc * sizeof(particle_t*));
+    for(int r = 0; r < n_proc; r++){
+        particles_to_ghost_recv[r] = (particle_t*) malloc(n * sizeof(particle_t));
+    }
     
     DBOUT(printf("setup particle mpi types\n"));
     MPI_Datatype PARTICLE;
@@ -356,7 +365,75 @@ int main(int argc, char **argv)
          *
          *****************************************************************************************************/
 
+        /*****************************************************************************************************
+         *
+         * Start Ghost communication
+         *
+         *****************************************************************************************************/
+        int number_to_send_ghost_to[n_proc];
+        int number_to_recv_ghost_from[n_proc];
+        for(int r=0; r<n_proc; r++){
+            number_to_send_ghost_to[r] = 0;
+            number_to_recv_ghost_from[r] = 0;
+        }
+        int prev = rank-1;
+        int next = rank+1;
 
+        
+        for(int p = 0; p< myparticle_count  ; p++) {
+            double y = myparticles[p].y;
+            if(prev > 0 && y >= (ymin[rank] - interaction_length) ){
+                particles_to_ghost_send[prev][number_to_send_ghost_to[prev]] = myparticles[p];
+                number_to_send_ghost_to[prev]++;
+            }
+            if(next < n_proc && y <= (ymax[rank] + interaction_length) ){
+                particles_to_ghost_send[next][number_to_send_ghost_to[next]] = myparticles[p];
+                number_to_send_ghost_to[next]++;
+            }
+        }
+        for(int r=0; r<n_proc; r++){
+            if(r != rank){
+                // printf("rank: %d sending to %d \n", rank, r);
+                MPI_Send(number_to_send_ghost_to+r, 1, MPI_INT, r, 3, MPI_COMM_WORLD);
+            }
+            else{
+                for(int recv=0; recv<n_proc; recv++){
+                    if(recv == rank){
+                        continue;
+                    }
+                    // printf("rank: %d recving from %d \n", rank, recv);
+                    MPI_Recv(number_to_recv_ghost_from+recv, 1, MPI_INT, recv, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                }
+            }
+
+        }
+
+        for(int r=0; r<n_proc; r++){
+            if(r != rank){
+                if(number_to_send_ghost_to[r] > 0){
+                    // printf("step %d rank: %d sending %d particles to %d \n", step, rank, number_to_send_to[r], r);
+                    MPI_Send(particles_to_ghost_send[r], number_to_send_ghost_to[r], PARTICLE, r, 4, MPI_COMM_WORLD);
+                }
+            }
+            else{
+                for(int recv=0; recv<n_proc; recv++){
+                    if(recv == rank){
+                        continue;
+                    }
+                    if(number_to_recv_ghost_from[recv] > 0){
+                        // printf("step %d rank: %d receiving %d particles from %d \n", step, rank, number_to_recv_from[recv], recv);
+                        MPI_Recv(particles_to_ghost_recv[recv], number_to_recv_ghost_from[recv], PARTICLE, recv, 4, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    }
+                }
+            }
+        }
+
+        
+        /*****************************************************************************************************
+         *
+         * End Ghost communication
+         *
+         *****************************************************************************************************/
 
         for(int b=0; b<blocksize*blocksize; b++){
             number_in_block[b] = 0; // starts with no particles in any box;
@@ -370,7 +447,17 @@ int main(int argc, char **argv)
             int particle_index = number_in_block[x_index + y_index*blocksize]++;
             blocks[x_index + y_index*blocksize][particle_index] = myparticles+p;
         }
-
+        for(int r=0; r<n_proc; r++){
+            for(int i=0; i<number_to_recv_ghost_from[r]; i++){
+                double x =  particles_to_ghost_recv[r][i].x;
+                double y =  particles_to_ghost_recv[r][i].y;
+                // assert(y <= ymax[rank] && y >= ymin[rank]);
+                int x_index = (int)floor(x/block_width);
+                int y_index = (int)floor(y/block_width);
+                int particle_index = number_in_block[x_index + y_index*blocksize]++;
+                blocks[x_index + y_index*blocksize][particle_index] = &(particles_to_ghost_recv[r][i]);
+            }
+        }
         // for(int j=0; j<blocksize; j++){
         //     printf("\nrank, j: %d, %d numinblock:",rank,j);
         //     for(int i=0; i<blocksize; i++){
