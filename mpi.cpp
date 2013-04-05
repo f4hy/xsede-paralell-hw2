@@ -54,9 +54,9 @@ int main(int argc, char **argv)
     //
     //  allocate generic resources
     //
-    // FILE *fsave = savename && rank == 0 ? fopen(savename, "w") : NULL;
+    FILE *fsave = savename && rank == 0 ? fopen(savename, "w") : NULL;
     FILE *fsum = sumname && rank == 0 ? fopen(sumname, "a") : NULL;
-    FILE *fsave = savename ? fopen(savename, "a") : NULL;
+    // FILE *fsave = savename ? fopen(savename, "a") : NULL;
 
 
     particle_t *particles = (particle_t*) malloc(n * sizeof(particle_t));
@@ -226,13 +226,24 @@ int main(int argc, char **argv)
             if( (step % SAVEFREQ) == 0) {
                 // MPI_Scatterv(contig_particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, myparticles, myparticle_count, PARTICLE, 0, MPI_COMM_WORLD);
                 
-                // MPI_Gatherv(myparticles, myparticle_count, PARTICLE, particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, 0, MPI_COMM_WORLD);
-                // save(fsave, n, particles);
-                for(int r=0; r<n_proc; r++){
-                    if(rank ==r)
-                        save(fsave, myparticle_count, myparticles);
-                    MPI_Barrier(MPI_COMM_WORLD );
+                MPI_Gatherv(myparticles, myparticle_count, PARTICLE, particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, 0, MPI_COMM_WORLD);
+                if(rank == 0){
+                    save(fsave, n, particles);
                 }
+                // for(int r=0; r<n_proc; r++){
+                //     if(rank ==r){
+                //         static bool first = true;
+                //         if(first && rank==0) {
+                //             fprintf(fsave, "%d %g\n", n, size);
+                //             first = false;
+                //         }
+                //         for(int i = 0; i < myparticle_count; i++) {
+                //             fprintf(fsave, "%g %g\n", myparticles[i].x, myparticles[i].y);
+                //         }
+                //         // save(fsave, myparticle_count, myparticles);
+                //     }
+                //     MPI_Barrier(MPI_COMM_WORLD );
+                // }
                 
             }
 
