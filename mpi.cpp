@@ -1,14 +1,8 @@
-#ifdef RELEASE
-#define DBOUT( x )
-#else
-#define DBOUT( x )  if(rank == 0) x
-#endif
 
 
 #include <mpi.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <assert.h>
 #include <math.h>
 #include <iostream>
 #include "common.h"
@@ -22,7 +16,6 @@ int belongs_on(int num_procs, double ymin[], double ymax[], particle_t &p){
         }
     }
     //should never happen, should be in one of them!!
-    assert(false);
     return -1;
 }
 
@@ -80,7 +73,6 @@ int main(int argc, char **argv)
         saveoutput = 1;
     }
     MPI_Bcast(&saveoutput, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    DBOUT(printf("saveoutput = %d \n" ,saveoutput));
     
     
     particle_t *particles = (particle_t*) malloc(n * sizeof(particle_t));
@@ -88,7 +80,6 @@ int main(int argc, char **argv)
     double interaction_length = 0.01;
 
     int blocksize = (int) ceil(size/interaction_length);
-    DBOUT(printf("blocksize = %d \n" ,blocksize));
 
     double block_width = size/blocksize;
 
@@ -121,12 +112,10 @@ int main(int argc, char **argv)
         particles_to_ghost_recv[r] = (particle_t*) malloc(n * sizeof(particle_t));
     }
     
-    DBOUT(printf("setup particle mpi types\n"));
     MPI_Datatype PARTICLE;
     MPI_Type_contiguous(6, MPI_DOUBLE, &PARTICLE);
     MPI_Type_commit(&PARTICLE);
 
-    DBOUT(printf("setup block mpi types\n"));
     MPI_Datatype BLOCK;
     MPI_Type_contiguous(6*MAXPARTILCESPERBOX, MPI_DOUBLE, &BLOCK);
     MPI_Type_commit(&BLOCK);
@@ -134,21 +123,15 @@ int main(int argc, char **argv)
     //
     //  set up the data partitioning across processors
     //
-    DBOUT(printf("setup partition offsets \n"));
     int blocks_per_proc = (blocksize + n_proc - 1) / n_proc;
     int *partition_offsets = (int*) malloc((n_proc + 1) * sizeof(int));
     for(int i = 0; i < n_proc + 1; i++) {
-        DBOUT(printf("%d \n" ,i));
         partition_offsets[i] = min(i * blocks_per_proc, blocksize);
-        DBOUT(printf("partition_ofsets[%d] = %d \n" ,i, partition_offsets[i]));
     }
 
-    DBOUT(printf("setup partition sizes \n"));
     int *partition_sizes = (int*) malloc(n_proc * sizeof(int));
     for(int i = 0; i < n_proc; i++) {
-        DBOUT(printf("%d \n" ,i));
         partition_sizes[i] = partition_offsets[i + 1] - partition_offsets[i];
-        DBOUT(printf("partition_sizes[%d] = %d \n" ,i, partition_sizes[i]));
     }
 
     double ymax[n_proc];
@@ -159,15 +142,9 @@ int main(int argc, char **argv)
         ymax[i] = (i+1)*(size/n_proc);
     }
 
-    if(rank==0)
-        printf("size %f\n",size);
-    for(int i = 0; i < n_proc; i++) {
-        printf("%d min %f, max %f\n",i, ymin[i], ymax[i]);
-    }
     
     //allocate storage for local partition
     
-    // DBOUT(printf("setup local blocks\n"));
     // int num_local_blocks = partition_sizes[rank];
 
     // particle_t *local_blocks = (particle_t*) malloc(num_local_blocks*MAXPARTILCESPERBOX * sizeof(particle_t));
@@ -179,11 +156,9 @@ int main(int argc, char **argv)
 
     set_size(n);
     if(rank == 0) {
-        DBOUT(printf("init particles\n"));
         init_particles(n, particles);
 
 
-        DBOUT(printf("set blocks the first time\n"));
         for(int p = 0; p < n; p++) {
             double x = particles[p].x;
             double y = particles[p].y;
@@ -200,7 +175,6 @@ int main(int argc, char **argv)
     int particles_on_proc[n_proc];
     int particles_on_proc_offsets[n_proc+1];
     particles_on_proc_offsets[0] = 0;
-    DBOUT(printf("set contig blocks\n"));
     if(rank == 0) {
         int contig_index = 0;
         for (int r=0; r<n_proc; r++){
@@ -218,43 +192,14 @@ int main(int argc, char **argv)
             }
             particles_on_proc_offsets[r+1] = particles_on_proc_offsets[r]+particles_on_proc[r];
         }
-        assert(contig_index == n);
-        int total_particles = 0;
-        for (int r=0; r<n_proc; r++){
-            total_particles += particles_on_proc[r];
-            DBOUT(printf("partciles on proc[%d] = %d\n",r,particles_on_proc[r]));
-        }
-        assert(total_particles == n);
     }
     MPI_Bcast(particles_on_proc, n_proc, MPI_INT, 0, MPI_COMM_WORLD);
 
     int myparticle_count = particles_on_proc[rank];
-    // particle_t *myparticles = (particle_t*) malloc((myparticle_count)* sizeof(particle_t) );
     particle_t *myparticles = (particle_t*) malloc((n)* sizeof(particle_t) );
     
-    printf("scatterv\n");
-    // MPI_Scatterv(contig_block_particles, partition_sizes, partition_offsets, BLOCK,
-    //              local_blocks, num_local_blocks, PARTICLE, 0, MPI_COMM_WORLD);
     MPI_Scatterv(contig_particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, myparticles, myparticle_count, PARTICLE, 0, MPI_COMM_WORLD);
 
-    printf("scatteredv\n");
-
-    // for(int i=0; i<myparticle_count; i++){
-    //     if(rank != belongs_on(n_proc, ymin, ymax, myparticles[i])){
-    //         printf("rank %d,y %f, myymin %f, ymax %f , i %d/%d\n", rank, myparticles[i].y, ymin[rank], ymax[rank], i, myparticle_count);
-    //     }
-    //     assert(belongs_on(n_proc, ymin, ymax, myparticles[i]) == rank);
-    // }
-
-    
-    // std::cout << rank << " " << myparticle_count << std::endl;
-    // for(int p=0; p<myparticle_count; p++){
-    //     std::cout << rank << " "<<myparticles[p].x << " " << myparticles[p].y<< std::endl;
-    // }
-    // exit(1);
-    // printf("inital scatter\n");
-    // MPI_Scatter(particles, n, PARTICLE, particles, n, PARTICLE, 0, MPI_COMM_WORLD);
-    // printf("inital scattered\n");
 
     //
     //  simulate a number of time steps
@@ -282,8 +227,6 @@ int main(int argc, char **argv)
         for(int p = myparticle_count-1; p>=0  ; p--) {
             int this_belongs_on = belongs_on(n_proc, ymin, ymax, myparticles[p]);
             if(this_belongs_on != rank){
-                // printf("Oh no particle doesnt belong!\n");
-                // printf("We are %d, this belongs on %d\n",rank, this_belongs_on);
                 particles_to_send[this_belongs_on][number_to_send_to[this_belongs_on]] = myparticles[p];
                 number_to_send_to[this_belongs_on]++;
                 // copy the end of the array to this position, should
@@ -291,13 +234,9 @@ int main(int argc, char **argv)
                 myparticle_count--;
                 myparticles[p] = myparticles[myparticle_count];
             }
-            // assert(this_belongs_on == rank);
-            // assert(y <= ymax[rank] && y >= ymin[rank]);
         }
-        // printf("big communication\n");
         for(int r=0; r<n_proc; r++){
             if(r != rank){
-                // printf("rank: %d sending to %d \n", rank, r);
                 MPI_Send(number_to_send_to+r, 1, MPI_INT, r, 1, MPI_COMM_WORLD);
             }
             else{
@@ -305,19 +244,15 @@ int main(int argc, char **argv)
                     if(recv == rank){
                         continue;
                     }
-                    // printf("rank: %d recving from %d \n", rank, recv);
                     MPI_Recv(number_to_recv_from+recv, 1, MPI_INT, recv, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 }
             }
 
         }
-        
-
     
         for(int r=0; r<n_proc; r++){
             if(r != rank){
                 if(number_to_send_to[r] > 0){
-                    // printf("step %d rank: %d sending %d particles to %d \n", step, rank, number_to_send_to[r], r);
                     MPI_Send(particles_to_send[r], number_to_send_to[r], PARTICLE, r, 2, MPI_COMM_WORLD);
                 }
             }
@@ -327,7 +262,6 @@ int main(int argc, char **argv)
                         continue;
                     }
                     if(number_to_recv_from[recv] > 0){
-                        // printf("step %d rank: %d receiving %d particles from %d \n", step, rank, number_to_recv_from[recv], recv);
                         MPI_Recv(particles_to_recv[recv], number_to_recv_from[recv], PARTICLE, recv, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     }
                 }
@@ -337,27 +271,10 @@ int main(int argc, char **argv)
 
         for(int r=0; r<n_proc; r++){
             for(int i=0; i<number_to_recv_from[r]; i++){
-                double y = particles_to_recv[r][i].y;
-                assert(y <= ymax[rank] && y >= ymin[rank]);
                 myparticles[myparticle_count] = particles_to_recv[r][i];
                 myparticle_count++;
                 
             }
-        }
-        for(int i=0; i<myparticle_count; i++){
-            // printf("my rank %d, thisbelongs on %d\n",rank,belongs_on(n_proc, ymin, ymax, myparticles[i]));
-            if(rank != belongs_on(n_proc, ymin, ymax, myparticles[i])){
-                printf("rank %d,y %f, myymin %f, ymax %f , i %d/%d\n", rank, myparticles[i].y, ymin[rank], ymax[rank], i, myparticle_count);
-            }
-            assert(belongs_on(n_proc, ymin, ymax, myparticles[i]) == rank);
-        }
-
-        int total_particle_count = 0;
-        MPI_Reduce(&myparticle_count, &total_particle_count, 1, MPI_INT, 
-                   MPI_SUM, 0, MPI_COMM_WORLD);
-        if(rank == 0){
-            assert(total_particle_count == n);
-            // printf("total %d\n", total_particle_count);
         }
         /*****************************************************************************************************
          *
@@ -393,7 +310,6 @@ int main(int argc, char **argv)
         }
         for(int r=0; r<n_proc; r++){
             if(r != rank){
-                // printf("rank: %d sending to %d \n", rank, r);
                 MPI_Send(number_to_send_ghost_to+r, 1, MPI_INT, r, 3, MPI_COMM_WORLD);
             }
             else{
@@ -401,7 +317,6 @@ int main(int argc, char **argv)
                     if(recv == rank){
                         continue;
                     }
-                    // printf("rank: %d recving from %d \n", rank, recv);
                     MPI_Recv(number_to_recv_ghost_from+recv, 1, MPI_INT, recv, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 }
             }
@@ -411,7 +326,6 @@ int main(int argc, char **argv)
         for(int r=0; r<n_proc; r++){
             if(r != rank){
                 if(number_to_send_ghost_to[r] > 0){
-                    // printf("step %d rank: %d sending %d particles to %d \n", step, rank, number_to_send_to[r], r);
                     MPI_Send(particles_to_ghost_send[r], number_to_send_ghost_to[r], PARTICLE, r, 4, MPI_COMM_WORLD);
                 }
             }
@@ -421,7 +335,6 @@ int main(int argc, char **argv)
                         continue;
                     }
                     if(number_to_recv_ghost_from[recv] > 0){
-                        // printf("step %d rank: %d receiving %d particles from %d \n", step, rank, number_to_recv_from[recv], recv);
                         MPI_Recv(particles_to_ghost_recv[recv], number_to_recv_ghost_from[recv], PARTICLE, recv, 4, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     }
                 }
@@ -441,7 +354,6 @@ int main(int argc, char **argv)
         for(int p = 0; p < myparticle_count; p++) {
             double x = myparticles[p].x;
             double y = myparticles[p].y;
-            // assert(y <= ymax[rank] && y >= ymin[rank]);
             int x_index = (int)floor(x/block_width);
             int y_index = (int)floor(y/block_width);
             int particle_index = number_in_block[x_index + y_index*blocksize]++;
@@ -451,20 +363,12 @@ int main(int argc, char **argv)
             for(int i=0; i<number_to_recv_ghost_from[r]; i++){
                 double x =  particles_to_ghost_recv[r][i].x;
                 double y =  particles_to_ghost_recv[r][i].y;
-                // assert(y <= ymax[rank] && y >= ymin[rank]);
                 int x_index = (int)floor(x/block_width);
                 int y_index = (int)floor(y/block_width);
                 int particle_index = number_in_block[x_index + y_index*blocksize]++;
                 blocks[x_index + y_index*blocksize][particle_index] = &(particles_to_ghost_recv[r][i]);
             }
         }
-        // for(int j=0; j<blocksize; j++){
-        //     printf("\nrank, j: %d, %d numinblock:",rank,j);
-        //     for(int i=0; i<blocksize; i++){
-        //         printf(" %d", number_in_block[i + j*blocksize]);
-        //     }
-        // }
-        //
         //  save current step if necessary (slightly different semantics than in other codes)
         //
         if(find_option(argc, argv, "-no") == -1){
@@ -477,30 +381,15 @@ int main(int argc, char **argv)
                 MPI_Gatherv(myparticles, myparticle_count, PARTICLE, particles, particles_on_proc, particles_on_proc_offsets, PARTICLE, 0, MPI_COMM_WORLD);
                 if(rank == 0){
                     save(fsave, n, particles);
-                    // save(fsave, myparticle_count, myparticles);
                 }
-                // for(int r=0; r<n_proc; r++){
-                //     if(rank ==r){
-                //         static bool first = true;
-                //         if(first && rank==0) {
-                //             fprintf(fsave, "%d %g\n", n, size);
-                //             first = false;
-                //         }
-                //         for(int i = 0; i < myparticle_count; i++) {
-                //             fprintf(fsave, "%g %g\n", myparticles[i].x, myparticles[i].y);
-                //         }
-                //         // save(fsave, myparticle_count, myparticles);
-                //     }
-                //     MPI_Barrier(MPI_COMM_WORLD );
-                // }
                 
             }
         }
         //
         //  compute all forces
         //
-        for(int i=0; i<blocksize; i++){
-            for(int j=0; j<blocksize; j++){
+        for(int j=0; j<blocksize; j++){
+            for(int i=0; i<blocksize; i++){
                 for(int p=0; p<number_in_block[i + j*blocksize]; p++ ){
                     blocks[i + j*blocksize][p]->ax = blocks[i + j*blocksize][p]->ay = 0;
                     //interact with blocks and neighbors
@@ -527,12 +416,6 @@ int main(int argc, char **argv)
                 }
             }
         }
-        // for(int i = 0; i < nlocal; i++) {
-        //     local[i].ax = local[i].ay = 0;
-        //     for(int j = 0; j < n; j++) {
-        //         apply_force(local[i], particles[j], &dmin, &davg, &navg);
-        //     }
-        // }
 
         if(find_option(argc, argv, "-no") == -1) {
 
